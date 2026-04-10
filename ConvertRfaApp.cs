@@ -25,50 +25,78 @@ namespace RfaToRvtPlugin
 
         public void HandleDesignAutomationReadyEvent(object sender, DesignAutomationReadyEventArgs e)
         {
-            e.Succeeded = false; // On part du principe que ça échoue, on mettra True à la fin
+            Console.WriteLine("🚀 [DEBUG] Début de l'exécution du plugin...");
+            e.Succeeded = false; // Par défaut, on signale un échec
+            
             try
             {
                 DesignAutomationData data = e.DesignAutomationData;
                 Application app = data.RevitApp;
                 
-                // Le fichier input.rfa est DÉJÀ ouvert par le Cloud, on le récupère directement de la mémoire !
+                Console.WriteLine("🚀 [DEBUG] Récupération du document RFA ouvert en mémoire...");
                 Document familyDoc = data.RevitDoc;
 
-                if (familyDoc == null || !familyDoc.IsFamilyDocument)
+                if (familyDoc == null)
                 {
-                    Console.WriteLine("❌ ERREUR: Le fichier reçu n'est pas un RFA valide.");
+                    Console.WriteLine("❌ [ERREUR] Le document familyDoc est null ! Le fichier RFA n'a pas pu être lu.");
+                    return;
+                }
+                
+                if (!familyDoc.IsFamilyDocument)
+                {
+                    Console.WriteLine("❌ [ERREUR] Le fichier reçu n'est pas reconnu comme une famille RFA valide.");
                     return;
                 }
 
-                Console.WriteLine("⚙️ 1. Création du projet RVT...");
+                Console.WriteLine("🚀 [DEBUG] Création d'un nouveau projet RVT vide...");
                 Document projectDoc = app.NewProjectDocument(UnitSystem.Metric);
 
-                Console.WriteLine("⚙️ 2. Chargement de la famille (De mémoire à mémoire)...");
+                if (projectDoc == null)
+                {
+                     Console.WriteLine("❌ [ERREUR] Impossible de créer le nouveau document RVT.");
+                     return;
+                }
+
+                Console.WriteLine("🚀 [DEBUG] Début de la transaction pour charger la famille...");
                 using (Transaction t = new Transaction(projectDoc, "Load RFA into RVT"))
                 {
                     t.Start();
-                    // On injecte la famille dans le projet avec une option pour ignorer les pop-ups
-                    familyDoc.LoadFamily(projectDoc, new CustomFamilyLoadOptions());
+                    Console.WriteLine("🚀 [DEBUG] Injection de la famille...");
+                    
+                    Family loadedFamily = null;
+                    bool isLoaded = familyDoc.LoadFamily(projectDoc, new CustomFamilyLoadOptions(), out loadedFamily);
+                    
+                    if (isLoaded) {
+                        Console.WriteLine($"🚀 [DEBUG] Famille chargée avec succès (Nom: {loadedFamily?.Name})");
+                    } else {
+                        Console.WriteLine("⚠️ [ATTENTION] La méthode LoadFamily a retourné false. (Peut-être déjà chargée, mais on continue).");
+                    }
+                    
                     t.Commit();
                 }
 
-                Console.WriteLine("⚙️ 3. Sauvegarde du fichier result.rvt...");
-                string outputRvtPath = "result.rvt";
+                Console.WriteLine("🚀 [DEBUG] Configuration de la sauvegarde...");
+                string outputRvtPath = "result.rvt"; // Le nom exact attendu par node.js
                 SaveAsOptions saveOptions = new SaveAsOptions { OverwriteExistingFile = true };
+                
+                Console.WriteLine($"🚀 [DEBUG] Sauvegarde du fichier : {outputRvtPath}");
                 projectDoc.SaveAs(outputRvtPath, saveOptions);
+                
+                Console.WriteLine("🚀 [DEBUG] Fermeture du projet...");
                 projectDoc.Close(false);
 
-                Console.WriteLine("✅ CONVERSION RÉUSSIE !");
-                e.Succeeded = true; // On valide l'opération pour le serveur Autodesk
+                Console.WriteLine("✅ [SUCCES] Conversion terminée sans erreur.");
+                e.Succeeded = true; 
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"❌ CRASH INTERNE: {ex.Message}");
+                Console.WriteLine("❌ [CRASH INTERNE C#] Une exception a été levée :");
+                Console.WriteLine($"Message: {ex.Message}");
+                Console.WriteLine($"Stack Trace: {ex.StackTrace}");
             }
         }
     }
 
-    // Cette classe est obligatoire pour dire à Revit d'écraser les fichiers sans afficher de Pop-up d'alerte
     public class CustomFamilyLoadOptions : IFamilyLoadOptions
     {
         public bool OnFamilyFound(bool familyInUse, out bool overwriteParameterValues)

@@ -1,5 +1,4 @@
 using System;
-using System.IO;
 using Autodesk.Revit.ApplicationServices;
 using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
@@ -57,22 +56,15 @@ namespace RfaToRvtPlugin
                      return;
                 }
 
-                Console.WriteLine("🚀 [DEBUG] Début de la transaction pour charger la famille...");
-                using (Transaction t = new Transaction(projectDoc, "Load RFA into RVT"))
-                {
-                    t.Start();
-                    Console.WriteLine("🚀 [DEBUG] Injection de la famille...");
-                    
-                    // CORRECTION ICI : La syntaxe correcte pour charger de mémoire à mémoire
-                    Family loadedFamily = familyDoc.LoadFamily(projectDoc, new CustomFamilyLoadOptions());
-                    
-                    if (loadedFamily != null) {
-                        Console.WriteLine($"🚀 [DEBUG] Famille chargée avec succès (Nom: {loadedFamily.Name})");
-                    } else {
-                        Console.WriteLine("⚠️ [ATTENTION] La famille n'a pas pu être chargée.");
-                    }
-                    
-                    t.Commit();
+                Console.WriteLine("🚀 [DEBUG] Injection de la famille (HORS TRANSACTION)...");
+                
+                // LA CORRECTION EST ICI : Plus de "using (Transaction t...)"
+                Family loadedFamily = familyDoc.LoadFamily(projectDoc, new CustomFamilyLoadOptions());
+                
+                if (loadedFamily != null) {
+                    Console.WriteLine($"🚀 [DEBUG] Famille chargée avec succès (Nom: {loadedFamily.Name})");
+                } else {
+                    Console.WriteLine("⚠️ [ATTENTION] La famille n'a pas pu être chargée.");
                 }
 
                 Console.WriteLine("🚀 [DEBUG] Configuration de la sauvegarde...");

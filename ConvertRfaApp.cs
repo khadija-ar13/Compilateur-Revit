@@ -26,7 +26,7 @@ namespace RfaToRvtPlugin
         public void HandleDesignAutomationReadyEvent(object sender, DesignAutomationReadyEventArgs e)
         {
             Console.WriteLine("🚀 [DEBUG] Début de l'exécution du plugin...");
-            e.Succeeded = false; // Par défaut, on signale un échec
+            e.Succeeded = false; 
             
             try
             {
@@ -63,20 +63,20 @@ namespace RfaToRvtPlugin
                     t.Start();
                     Console.WriteLine("🚀 [DEBUG] Injection de la famille...");
                     
-                    Family loadedFamily = null;
-                    bool isLoaded = familyDoc.LoadFamily(projectDoc, new CustomFamilyLoadOptions(), out loadedFamily);
+                    // CORRECTION ICI : La syntaxe correcte pour charger de mémoire à mémoire
+                    Family loadedFamily = familyDoc.LoadFamily(projectDoc, new CustomFamilyLoadOptions());
                     
-                    if (isLoaded) {
-                        Console.WriteLine($"🚀 [DEBUG] Famille chargée avec succès (Nom: {loadedFamily?.Name})");
+                    if (loadedFamily != null) {
+                        Console.WriteLine($"🚀 [DEBUG] Famille chargée avec succès (Nom: {loadedFamily.Name})");
                     } else {
-                        Console.WriteLine("⚠️ [ATTENTION] La méthode LoadFamily a retourné false. (Peut-être déjà chargée, mais on continue).");
+                        Console.WriteLine("⚠️ [ATTENTION] La famille n'a pas pu être chargée.");
                     }
                     
                     t.Commit();
                 }
 
                 Console.WriteLine("🚀 [DEBUG] Configuration de la sauvegarde...");
-                string outputRvtPath = "result.rvt"; // Le nom exact attendu par node.js
+                string outputRvtPath = "result.rvt"; 
                 SaveAsOptions saveOptions = new SaveAsOptions { OverwriteExistingFile = true };
                 
                 Console.WriteLine($"🚀 [DEBUG] Sauvegarde du fichier : {outputRvtPath}");

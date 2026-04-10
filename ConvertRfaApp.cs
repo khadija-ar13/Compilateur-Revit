@@ -27,7 +27,7 @@ namespace RfaToRvtPlugin
 
         public void HandleDesignAutomationReadyEvent(object sender, DesignAutomationReadyEventArgs e)
         {
-            Console.WriteLine("🚀 [DEBUG] Début de l'exécution du plugin...");
+            Console.WriteLine("🚀 [DEBUG] Démarrage du placement universel...");
             e.Succeeded = false; 
             
             try
@@ -36,87 +36,59 @@ namespace RfaToRvtPlugin
                 Application app = data.RevitApp;
                 Document familyDoc = data.RevitDoc;
 
-                if (familyDoc == null || !familyDoc.IsFamilyDocument)
-                {
-                    Console.WriteLine("❌ [ERREUR] Le fichier reçu n'est pas une famille valide.");
-                    return;
-                }
-
-                Console.WriteLine("🚀 [DEBUG] Création d'un nouveau projet RVT vide...");
+                // Création du projet RVT
                 Document projectDoc = app.NewProjectDocument(UnitSystem.Metric);
 
-                Console.WriteLine("🚀 [DEBUG] Injection de la famille (HORS TRANSACTION)...");
-                // 1. Charger la famille d'abord, SANS transaction ouverte
+                // 1. Charger la famille (Hors transaction)
                 Family loadedFamily = familyDoc.LoadFamily(projectDoc, new CustomFamilyLoadOptions());
                 
                 if (loadedFamily != null) {
-                    Console.WriteLine($"🚀 [DEBUG] Famille chargée (Nom: {loadedFamily.Name}).");
-                    
-                    // Obtenir le premier type (symbole) de la famille
-                    FamilySymbol symbolToPlace = null;
-                    ISet<ElementId> symbolIds = loadedFamily.GetFamilySymbolIds();
-                    
-                    if (symbolIds.Count > 0)
+                    using (Transaction t = new Transaction(projectDoc, "Placement Automatique"))
                     {
-                        symbolToPlace = projectDoc.GetElement(symbolIds.First()) as FamilySymbol;
-                    }
+                        t.Start();
+                        
+                        FamilySymbol symbol = projectDoc.GetElement(loadedFamily.GetFamilySymbolIds().First()) as FamilySymbol;
+                        if (!symbol.IsActive) symbol.Activate();
 
-                    if (symbolToPlace != null)
-                    {
-                        Console.WriteLine("🚀 [DEBUG] Début de la transaction pour placer l'instance...");
-                        // 2. Ouvrir la transaction UNIQUEMENT pour modifier le document
-                        using (Transaction t = new Transaction(projectDoc, "Place Family Instance"))
+                        Level level = new FilteredElementCollector(projectDoc).OfClass(typeof(Level)).FirstElement() as Level;
+                        XYZ origin = XYZ.Zero;
+
+                        // --- LOGIQUE UNIVERSELLE ---
+                        if (loadedFamily.FamilyPlacementType == FamilyPlacementType.OneLevelBased)
                         {
-                            t.Start();
-                            
-                            // Activer le symbole s'il ne l'est pas
-                            if (!symbolToPlace.IsActive)
-                            {
-                                symbolToPlace.Activate();
-                                projectDoc.Regenerate();
-                            }
-
-                            // Placer l'objet au centre (0,0,0)
-                            XYZ origin = new XYZ(0, 0, 0);
-                            
-                            // Déterminer le type de placement (basé sur le niveau)
-                            Level defaultLevel = new FilteredElementCollector(projectDoc)
-                                .OfClass(typeof(Level))
-                                .FirstElement() as Level;
-
-                            if (defaultLevel != null)
-                            {
-                                projectDoc.Create.NewFamilyInstance(origin, symbolToPlace, defaultLevel, StructuralType.NonStructural);
-                                Console.WriteLine("✅ [DEBUG] Instance placée au centre du projet !");
-                            }
-                            else
-                            {
-                                projectDoc.Create.NewFamilyInstance(origin, symbolToPlace, StructuralType.NonStructural);
-                                Console.WriteLine("✅ [DEBUG] Instance placée (sans niveau par défaut) !");
-                            }
-                            
-                            t.Commit();
+                            // Cas 1 : Objets simples (ex: Paroi de douche, Table)
+                            projectDoc.Create.NewFamilyInstance(origin, symbol, level, StructuralType.NonStructural);
+                            Console.WriteLine("✅ Objet posé sur le sol.");
                         }
+                        else if (loadedFamily.FamilyPlacementType == FamilyPlacementType.HostBasedCurve || 
+                                 loadedFamily.FamilyPlacementType == FamilyPlacementType.HostBasedLine ||
+                                 loadedFamily.FamilyPlacementType == FamilyPlacementType.HostBasedPoint)
+                        {
+                            // Cas 2 : Objets muraux (ex: Miroir, Porte)
+                            Line wallLine = Line.CreateBound(new XYZ(-5, 0, 0), new XYZ(5, 0, 0));
+                            Wall wall = Wall.Create(projectDoc, wallLine, level.Id, false);
+                            // On place le miroir sur le mur à 1m20 de hauteur
+                            projectDoc.Create.NewFamilyInstance(new XYZ(0, 0, 4.0), symbol, wall, level, StructuralType.NonStructural);
+                            Console.WriteLine("✅ Mur créé et objet accroché.");
+                        }
+                        else
+                        {
+                            // Cas 3 : Tout autre type (Placement libre)
+                            projectDoc.Create.NewFamilyInstance(origin, symbol, StructuralType.NonStructural);
+                            Console.WriteLine("✅ Objet placé par défaut.");
+                        }
+                        
+                        t.Commit();
                     }
-                    else
-                    {
-                        Console.WriteLine("⚠️ [ATTENTION] Aucun type (symbole) trouvé dans cette famille.");
-                    }
-                } else {
-                    Console.WriteLine("⚠️ [ATTENTION] La famille n'a pas pu être chargée.");
                 }
 
-                string outputRvtPath = "result.rvt"; 
-                SaveAsOptions saveOptions = new SaveAsOptions { OverwriteExistingFile = true };
-                projectDoc.SaveAs(outputRvtPath, saveOptions);
+                projectDoc.SaveAs("result.rvt", new SaveAsOptions { OverwriteExistingFile = true });
                 projectDoc.Close(false);
-
-                Console.WriteLine("✅ [SUCCES] Conversion terminée.");
                 e.Succeeded = true; 
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"❌ [CRASH INTERNE C#] {ex.Message}");
+                Console.WriteLine($"❌ Erreur : {ex.Message}");
             }
         }
     }

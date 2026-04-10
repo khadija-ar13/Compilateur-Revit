@@ -4,9 +4,10 @@
     <AssemblyName>RfaToRvtAppBundle</AssemblyName>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <OutputPath>bin\Release\</OutputPath>
+    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Nice3point.Revit.Api.RevitAPI" Version="2024.0.0" />
-    <PackageReference Include="Autodesk.Forge.DesignAutomation.Revit" Version="2024.0.0" />
+    <PackageReference Include="Nice3point.Revit.Api.RevitAPI" Version="2024.0.0" ExcludeAssets="runtime" />
+    <PackageReference Include="Autodesk.Forge.DesignAutomation.Revit" Version="2024.0.2" ExcludeAssets="runtime" />
   </ItemGroup>
 </Project>

@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Collections.Generic; // <--- LA LIGNE MAGIQUE QUI MANQUAIT
 using Autodesk.Revit.ApplicationServices;
 using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;

@@ -1,7 +1,9 @@
 using System;
+using System.Linq;
 using Autodesk.Revit.ApplicationServices;
 using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
+using Autodesk.Revit.DB.Structure;
 using DesignAutomationFramework;
 
 namespace RfaToRvtPlugin
@@ -31,77 +33,93 @@ namespace RfaToRvtPlugin
             {
                 DesignAutomationData data = e.DesignAutomationData;
                 Application app = data.RevitApp;
-                
-                Console.WriteLine("🚀 [DEBUG] Récupération du document RFA ouvert en mémoire...");
                 Document familyDoc = data.RevitDoc;
 
-                if (familyDoc == null)
+                if (familyDoc == null || !familyDoc.IsFamilyDocument)
                 {
-                    Console.WriteLine("❌ [ERREUR] Le document familyDoc est null ! Le fichier RFA n'a pas pu être lu.");
-                    return;
-                }
-                
-                if (!familyDoc.IsFamilyDocument)
-                {
-                    Console.WriteLine("❌ [ERREUR] Le fichier reçu n'est pas reconnu comme une famille RFA valide.");
+                    Console.WriteLine("❌ [ERREUR] Le fichier reçu n'est pas une famille valide.");
                     return;
                 }
 
                 Console.WriteLine("🚀 [DEBUG] Création d'un nouveau projet RVT vide...");
                 Document projectDoc = app.NewProjectDocument(UnitSystem.Metric);
 
-                if (projectDoc == null)
+                Console.WriteLine("🚀 [DEBUG] Injection et placement de la famille...");
+                using (Transaction t = new Transaction(projectDoc, "Load and Place Family"))
                 {
-                     Console.WriteLine("❌ [ERREUR] Impossible de créer le nouveau document RVT.");
-                     return;
+                    t.Start();
+                    
+                    Family loadedFamily = familyDoc.LoadFamily(projectDoc, new CustomFamilyLoadOptions());
+                    
+                    if (loadedFamily != null) {
+                        Console.WriteLine($"🚀 [DEBUG] Famille chargée (Nom: {loadedFamily.Name}). Recherche d'un type...");
+                        
+                        // Obtenir le premier type (symbole) de la famille
+                        FamilySymbol symbolToPlace = null;
+                        ISet<ElementId> symbolIds = loadedFamily.GetFamilySymbolIds();
+                        
+                        if (symbolIds.Count > 0)
+                        {
+                            symbolToPlace = projectDoc.GetElement(symbolIds.First()) as FamilySymbol;
+                        }
+
+                        if (symbolToPlace != null)
+                        {
+                            // Activer le symbole s'il ne l'est pas
+                            if (!symbolToPlace.IsActive)
+                            {
+                                symbolToPlace.Activate();
+                                projectDoc.Regenerate();
+                            }
+
+                            // Placer l'objet au centre (0,0,0)
+                            XYZ origin = new XYZ(0, 0, 0);
+                            
+                            // Déterminer le type de placement (basé sur le niveau)
+                            Level defaultLevel = new FilteredElementCollector(projectDoc)
+                                .OfClass(typeof(Level))
+                                .FirstElement() as Level;
+
+                            if (defaultLevel != null)
+                            {
+                                projectDoc.Create.NewFamilyInstance(origin, symbolToPlace, defaultLevel, StructuralType.NonStructural);
+                                Console.WriteLine("✅ [DEBUG] Instance placée au centre du projet !");
+                            }
+                            else
+                            {
+                                projectDoc.Create.NewFamilyInstance(origin, symbolToPlace, StructuralType.NonStructural);
+                                Console.WriteLine("✅ [DEBUG] Instance placée (sans niveau par défaut) !");
+                            }
+                        }
+                        else
+                        {
+                            Console.WriteLine("⚠️ [ATTENTION] Aucun type (symbole) trouvé dans cette famille.");
+                        }
+                    } else {
+                        Console.WriteLine("⚠️ [ATTENTION] La famille n'a pas pu être chargée.");
+                    }
+                    
+                    t.Commit();
                 }
 
-                Console.WriteLine("🚀 [DEBUG] Injection de la famille (HORS TRANSACTION)...");
-                
-                // LA CORRECTION EST ICI : Plus de "using (Transaction t...)"
-                Family loadedFamily = familyDoc.LoadFamily(projectDoc, new CustomFamilyLoadOptions());
-                
-                if (loadedFamily != null) {
-                    Console.WriteLine($"🚀 [DEBUG] Famille chargée avec succès (Nom: {loadedFamily.Name})");
-                } else {
-                    Console.WriteLine("⚠️ [ATTENTION] La famille n'a pas pu être chargée.");
-                }
-
-                Console.WriteLine("🚀 [DEBUG] Configuration de la sauvegarde...");
                 string outputRvtPath = "result.rvt"; 
                 SaveAsOptions saveOptions = new SaveAsOptions { OverwriteExistingFile = true };
-                
-                Console.WriteLine($"🚀 [DEBUG] Sauvegarde du fichier : {outputRvtPath}");
                 projectDoc.SaveAs(outputRvtPath, saveOptions);
-                
-                Console.WriteLine("🚀 [DEBUG] Fermeture du projet...");
                 projectDoc.Close(false);
 
-                Console.WriteLine("✅ [SUCCES] Conversion terminée sans erreur.");
+                Console.WriteLine("✅ [SUCCES] Conversion terminée.");
                 e.Succeeded = true; 
             }
             catch (Exception ex)
             {
-                Console.WriteLine("❌ [CRASH INTERNE C#] Une exception a été levée :");
-                Console.WriteLine($"Message: {ex.Message}");
-                Console.WriteLine($"Stack Trace: {ex.StackTrace}");
+                Console.WriteLine($"❌ [CRASH INTERNE C#] {ex.Message}");
             }
         }
     }
 
     public class CustomFamilyLoadOptions : IFamilyLoadOptions
     {
-        public bool OnFamilyFound(bool familyInUse, out bool overwriteParameterValues)
-        {
-            overwriteParameterValues = true;
-            return true;
-        }
-
-        public bool OnSharedFamilyFound(Family sharedFamily, bool familyInUse, out FamilySource source, out bool overwriteParameterValues)
-        {
-            source = FamilySource.Family;
-            overwriteParameterValues = true;
-            return true;
-        }
+        public bool OnFamilyFound(bool familyInUse, out bool overwriteParameterValues) { overwriteParameterValues = true; return true; }
+        public bool OnSharedFamilyFound(Family sharedFamily, bool familyInUse, out FamilySource source, out bool overwriteParameterValues) { source = FamilySource.Family; overwriteParameterValues = true; return true; }
     }
 }

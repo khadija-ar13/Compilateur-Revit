@@ -1,6 +1,6 @@
 using System;
 using System.Linq;
-using System.Collections.Generic; // <--- LA LIGNE MAGIQUE QUI MANQUAIT
+using System.Collections.Generic;
 using Autodesk.Revit.ApplicationServices;
 using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
@@ -45,27 +45,30 @@ namespace RfaToRvtPlugin
                 Console.WriteLine("🚀 [DEBUG] Création d'un nouveau projet RVT vide...");
                 Document projectDoc = app.NewProjectDocument(UnitSystem.Metric);
 
-                Console.WriteLine("🚀 [DEBUG] Injection et placement de la famille...");
-                using (Transaction t = new Transaction(projectDoc, "Load and Place Family"))
-                {
-                    t.Start();
+                Console.WriteLine("🚀 [DEBUG] Injection de la famille (HORS TRANSACTION)...");
+                // 1. Charger la famille d'abord, SANS transaction ouverte
+                Family loadedFamily = familyDoc.LoadFamily(projectDoc, new CustomFamilyLoadOptions());
+                
+                if (loadedFamily != null) {
+                    Console.WriteLine($"🚀 [DEBUG] Famille chargée (Nom: {loadedFamily.Name}).");
                     
-                    Family loadedFamily = familyDoc.LoadFamily(projectDoc, new CustomFamilyLoadOptions());
+                    // Obtenir le premier type (symbole) de la famille
+                    FamilySymbol symbolToPlace = null;
+                    ISet<ElementId> symbolIds = loadedFamily.GetFamilySymbolIds();
                     
-                    if (loadedFamily != null) {
-                        Console.WriteLine($"🚀 [DEBUG] Famille chargée (Nom: {loadedFamily.Name}). Recherche d'un type...");
-                        
-                        // Obtenir le premier type (symbole) de la famille
-                        FamilySymbol symbolToPlace = null;
-                        ISet<ElementId> symbolIds = loadedFamily.GetFamilySymbolIds();
-                        
-                        if (symbolIds.Count > 0)
-                        {
-                            symbolToPlace = projectDoc.GetElement(symbolIds.First()) as FamilySymbol;
-                        }
+                    if (symbolIds.Count > 0)
+                    {
+                        symbolToPlace = projectDoc.GetElement(symbolIds.First()) as FamilySymbol;
+                    }
 
-                        if (symbolToPlace != null)
+                    if (symbolToPlace != null)
+                    {
+                        Console.WriteLine("🚀 [DEBUG] Début de la transaction pour placer l'instance...");
+                        // 2. Ouvrir la transaction UNIQUEMENT pour modifier le document
+                        using (Transaction t = new Transaction(projectDoc, "Place Family Instance"))
                         {
+                            t.Start();
+                            
                             // Activer le symbole s'il ne l'est pas
                             if (!symbolToPlace.IsActive)
                             {
@@ -91,16 +94,16 @@ namespace RfaToRvtPlugin
                                 projectDoc.Create.NewFamilyInstance(origin, symbolToPlace, StructuralType.NonStructural);
                                 Console.WriteLine("✅ [DEBUG] Instance placée (sans niveau par défaut) !");
                             }
+                            
+                            t.Commit();
                         }
-                        else
-                        {
-                            Console.WriteLine("⚠️ [ATTENTION] Aucun type (symbole) trouvé dans cette famille.");
-                        }
-                    } else {
-                        Console.WriteLine("⚠️ [ATTENTION] La famille n'a pas pu être chargée.");
                     }
-                    
-                    t.Commit();
+                    else
+                    {
+                        Console.WriteLine("⚠️ [ATTENTION] Aucun type (symbole) trouvé dans cette famille.");
+                    }
+                } else {
+                    Console.WriteLine("⚠️ [ATTENTION] La famille n'a pas pu être chargée.");
                 }
 
                 string outputRvtPath = "result.rvt"; 
